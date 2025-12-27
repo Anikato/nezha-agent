@@ -637,36 +637,20 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
 
-	if agentConfig.UseGiteeToUpgrade {
-		repo := "Anikato/nezha-agent"
-		if agentConfig.SelfUpdateRepository != "" {
-			repo = agentConfig.SelfUpdateRepository
-		}
-
-		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
-			BinaryName: binaryName,
-		})
-		if erru != nil {
-			printf("更新失败: %v", erru)
-			return
-		}
-		latest, err = updater.UpdateSelf(v, repo)
-	} else {
-		repo := "Anikato/nezha-agent"
-		if agentConfig.SelfUpdateRepository != "" {
-			repo = agentConfig.SelfUpdateRepository
-		}
-
-		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
-			BinaryName:        binaryName,
-			EnterpriseBaseURL: agentConfig.SelfUpdateBaseURL,
-		})
-		if erru != nil {
-			printf("更新失败: %v", erru)
-			return
-		}
-		latest, err = updater.UpdateSelf(v, repo)
+	repo := "Anikato/nezha-agent"
+	if agentConfig.SelfUpdateRepository != "" {
+		repo = agentConfig.SelfUpdateRepository
 	}
+
+	updater, erru := selfupdate.NewUpdater(selfupdate.Config{
+		BinaryName:        binaryName,
+		EnterpriseBaseURL: agentConfig.SelfUpdateBaseURL,
+	})
+	if erru != nil {
+		printf("更新失败: %v", erru)
+		return
+	}
+	latest, err = updater.UpdateSelf(v, repo)
 
 	if err != nil {
 		printf("更新失败: %v", err)
