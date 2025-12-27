@@ -2,10 +2,15 @@ package monitor
 
 import (
 	"io"
+	"os"
 	"testing"
 )
 
 func TestGeoIPApi(t *testing.T) {
+	if os.Getenv("NEZHA_AGENT_NETWORK_TESTS") == "" {
+		t.Skip("network tests disabled (set NEZHA_AGENT_NETWORK_TESTS=1 to enable)")
+	}
+
 	for _, ep := range cfList {
 		resp, err := httpGetWithUA(httpClientV4, ep)
 		if err != nil {
@@ -25,6 +30,10 @@ func TestGeoIPApi(t *testing.T) {
 }
 
 func TestFetchGeoIP(t *testing.T) {
+	if os.Getenv("NEZHA_AGENT_NETWORK_TESTS") == "" {
+		t.Skip("network tests disabled (set NEZHA_AGENT_NETWORK_TESTS=1 to enable)")
+	}
+
 	ip := fetchIP(cfList, false)
 	if ip == "" {
 		t.Fatalf("fetchGeoIP() error: %v", ip)

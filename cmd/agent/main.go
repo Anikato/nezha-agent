@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/nezhahq/agent/cmd/agent/commands"
@@ -278,7 +279,16 @@ func run() {
 		} else {
 			securityOption = grpc.WithTransportCredentials(insecure.NewCredentials())
 		}
-		conn, err = grpc.NewClient(agentConfig.Server, securityOption, grpc.WithPerRPCCredentials(&auth))
+		conn, err = grpc.NewClient(
+			agentConfig.Server,
+			securityOption,
+			grpc.WithPerRPCCredentials(&auth),
+			grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Time:                20 * time.Second,
+				Timeout:             5 * time.Second,
+				PermitWithoutStream: true,
+			}),
+		)
 		if err != nil {
 			printf("与面板建立连接失败: %v", err)
 			retry()
@@ -304,9 +314,7 @@ func run() {
 		wCtx, wCancel := context.WithCancel(context.Background())
 
 		// 执行 Task
-		tasks, err := doWithTimeout(func() (pb.NezhaService_RequestTaskClient, error) {
-			return client.RequestTask(wCtx)
-		}, networkTimeOut)
+		tasks, err := client.RequestTask(wCtx)
 		if err != nil {
 			printf("请求任务失败: %v", err)
 			wCancel()
@@ -315,9 +323,7 @@ func run() {
 		}
 		go receiveTasksDaemon(tasks, wCancel)
 
-		reportState, err := doWithTimeout(func() (pb.NezhaService_ReportSystemStateClient, error) {
-			return client.ReportSystemState(wCtx)
-		}, networkTimeOut)
+		reportState, err := client.ReportSystemState(wCtx)
 		if err != nil {
 			printf("上报状态信息失败: %v", err)
 			wCancel()
@@ -405,9 +411,7 @@ func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.
 	var task *pb.Task
 	var err error
 	for {
-		task, err = doWithTimeout(func() (*pb.Task, error) {
-			return tasks.Recv()
-		}, time.Second*30)
+		task, err = tasks.Recv()
 		if err != nil {
 			printf("receiveTasks exit: %v", err)
 			cancel()
@@ -416,7 +420,7 @@ func receiveTasksDaemon(tasks pb.NezhaService_RequestTaskClient, cancel context.
 		go func(t *pb.Task) {
 			defer func() {
 				if err := recover(); err != nil {
-					println("task panic", task, err)
+					println("task panic", t, err)
 				}
 			}()
 			result := doTask(t)
@@ -486,13 +490,10 @@ func reportState(statClient pb.NezhaService_ReportSystemStateClient, host, ip ti
 	}
 	if initialized {
 		monitor.TrackNetworkSpeed()
-		if _, err := doWithTimeout(func() (*pb.Receipt, error) {
-			return nil, statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB())
-		}, time.Second*10); err != nil {
+		if err := statClient.Send(monitor.GetState(agentConfig.SkipConnectionCount, agentConfig.SkipProcsCount).PB()); err != nil {
 			return host, ip, err
 		}
-		_, err := doWithTimeout(statClient.Recv, time.Second*10)
-		if err != nil {
+		if _, err := statClient.Recv(); err != nil {
 			return host, ip, err
 		}
 	}
@@ -518,9 +519,9 @@ func reportHost() bool {
 	}
 	defer hostStatus.Store(false)
 	if client != nil && initialized {
-		receipt, err := doWithTimeout(func() (*pb.Uint64Receipt, error) {
-			return client.ReportSystemInfo2(context.Background(), monitor.GetHost().PB())
-		}, time.Second*10)
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		receipt, err := client.ReportSystemInfo2(timeoutCtx, monitor.GetHost().PB())
+		cancel()
 		if err != nil {
 			printf("ReportSystemInfo2 error: %v", err)
 			return false
@@ -549,9 +550,9 @@ func reportGeoIP(use6, forceUpdate bool) bool {
 		return true
 	}
 
-	geoip, err := doWithTimeout(func() (*pb.GeoIP, error) {
-		return client.ReportGeoIP(context.Background(), pbg)
-	}, time.Second*10)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	geoip, err := client.ReportGeoIP(timeoutCtx, pbg)
+	cancel()
 	if err != nil {
 		return false
 	}
@@ -635,16 +636,13 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 
 	printf("检查更新: %v", v)
 	var latest *selfupdate.Release
-	if monitor.CachedCountryCode != "cn" && !agentConfig.UseGiteeToUpgrade {
-		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
-			BinaryName: binaryName,
-		})
-		if erru != nil {
-			printf("更新失败: %v", erru)
-			return
+
+	if agentConfig.UseGiteeToUpgrade {
+		repo := "Anikato/nezha-agent"
+		if agentConfig.SelfUpdateRepository != "" {
+			repo = agentConfig.SelfUpdateRepository
 		}
-		latest, err = updater.UpdateSelf(v, "nezhahq/agent")
-	} else {
+
 		updater, erru := selfupdate.NewGiteeUpdater(selfupdate.Config{
 			BinaryName: binaryName,
 		})
@@ -652,7 +650,22 @@ func doSelfUpdate(useLocalVersion bool) (exit bool) {
 			printf("更新失败: %v", erru)
 			return
 		}
-		latest, err = updater.UpdateSelf(v, "naibahq/agent")
+		latest, err = updater.UpdateSelf(v, repo)
+	} else {
+		repo := "Anikato/nezha-agent"
+		if agentConfig.SelfUpdateRepository != "" {
+			repo = agentConfig.SelfUpdateRepository
+		}
+
+		updater, erru := selfupdate.NewUpdater(selfupdate.Config{
+			BinaryName:        binaryName,
+			EnterpriseBaseURL: agentConfig.SelfUpdateBaseURL,
+		})
+		if erru != nil {
+			printf("更新失败: %v", erru)
+			return
+		}
+		latest, err = updater.UpdateSelf(v, repo)
 	}
 
 	if err != nil {
@@ -1106,20 +1119,4 @@ func ioStreamKeepAlive(ctx context.Context, stream pb.NezhaService_IOStreamClien
 			}
 		}
 	}
-}
-
-func doWithTimeout[T any](fn func() (T, error), timeout time.Duration) (T, error) {
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	var t T
-	var err error
-	go func() {
-		defer cancel()
-		t, err = fn()
-	}()
-	<-timeoutCtx.Done()
-	if timeoutCtx.Err() != context.Canceled {
-		return t, fmt.Errorf("context error: %v, fn err: %v", timeoutCtx.Err(), err)
-	}
-	return t, err
 }

@@ -8,8 +8,8 @@ import (
 )
 
 func TestLookupIP(t *testing.T) {
-	if ci := os.Getenv("CI"); ci != "" { // skip if test on CI
-		return
+	if os.Getenv("NEZHA_AGENT_NETWORK_TESTS") == "" {
+		t.Skip("network tests disabled (set NEZHA_AGENT_NETWORK_TESTS=1 to enable)")
 	}
 
 	ip, err := lookupIP("www.google.com")

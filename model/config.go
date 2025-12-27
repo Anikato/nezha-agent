@@ -42,7 +42,9 @@ type AgentConfig struct {
 	DisableSendQuery            bool            `koanf:"disable_send_query" json:"disable_send_query"`           // 关闭发送TCP/ICMP/HTTP请求
 	IPReportPeriod              uint32          `koanf:"ip_report_period" json:"ip_report_period"`               // IP上报周期
 	SelfUpdatePeriod            uint32          `koanf:"self_update_period" json:"self_update_period"`           // 自动更新周期
-	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API                      // 重载间隔
+	CustomIPApi                 []string        `koanf:"custom_ip_api" json:"custom_ip_api,omitempty"`           // 自定义 IP API
+	SelfUpdateRepository        string          `koanf:"self_update_repository" json:"self_update_repository,omitempty"` // 自定义更新仓库
+	SelfUpdateBaseURL           string          `koanf:"self_update_base_url" json:"self_update_base_url,omitempty"`     // 自定义更新 API 地址
 
 	k        *koanf.Koanf `json:"-"`
 	filePath string       `json:"-"`
