@@ -25,7 +25,7 @@ func loadConnectionConfigTuple() connectionConfigTuple {
 		Server:      config.Server,
 		TLS:         config.TLS,
 		InsecureTLS: config.InsecureTLS,
-		Auth:        model.NewAuthHandler(config.ClientSecret, config.UUID, config.TLS),
+		Auth:        model.NewAuthHandler(config.ClientSecret, config.UUID, config.TLS, config.XPanelName, config.NodeRole),
 	}
 }
 

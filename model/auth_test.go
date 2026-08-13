@@ -10,7 +10,7 @@ func TestAuthHandlerCapturesImmutableConnectionCredentials(t *testing.T) {
 	// Given
 	secret := "secret-a"
 	uuid := "uuid-a"
-	auth := NewAuthHandler(secret, uuid, false)
+	auth := NewAuthHandler(secret, uuid, false, "", "")
 
 	// When
 	secret = "secret-b"
@@ -31,7 +31,7 @@ func TestAuthHandlerCapturesImmutableConnectionCredentials(t *testing.T) {
 
 func TestAuthHandlerEmitsLegacyAndHyphenatedMetadata(t *testing.T) {
 	// Given
-	auth := NewAuthHandler("secret", "uuid", true)
+	auth := NewAuthHandler("secret", "uuid", true, "", "")
 
 	// When
 	metadata, err := auth.GetRequestMetadata(context.Background())
@@ -71,7 +71,7 @@ func TestAuthHandlerGetRequestMetadataNilSafe(t *testing.T) {
 
 func TestAuthHandlerIntranetPlaintextStillAuthenticates(t *testing.T) {
 	// Given
-	auth := NewAuthHandler("intranet-secret", "intranet-uuid", false)
+	auth := NewAuthHandler("intranet-secret", "intranet-uuid", false, "", "")
 
 	// When
 	metadata, err := auth.GetRequestMetadata(context.Background())
@@ -90,7 +90,7 @@ func TestAuthHandlerIntranetPlaintextStillAuthenticates(t *testing.T) {
 
 func TestAuthHandlerConcurrentReadsRemainImmutable(t *testing.T) {
 	// Given
-	auth := NewAuthHandler("secret-a", "uuid-a", true)
+	auth := NewAuthHandler("secret-a", "uuid-a", true, "", "")
 	const readers = 16
 	const rounds = 1000
 	var waitGroup sync.WaitGroup
@@ -133,5 +133,68 @@ func TestAuthHandlerRequireTransportSecurityNilSafe(t *testing.T) {
 	}
 	if zero.RequireTransportSecurity() {
 		t.Fatal("zero-value handler must preserve plaintext-compatible behavior")
+	}
+}
+
+func TestAuthHandlerEmitsTrimmedXPanelNameAliases(t *testing.T) {
+	auth := NewAuthHandler("secret", "uuid", true, " 私人面板 ", "")
+	metadata, err := auth.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata["xpanel-name"] != "私人面板" || metadata["xpanel_name"] != "私人面板" {
+		t.Fatalf("xpanel metadata = %#v", metadata)
+	}
+}
+
+func TestAuthHandlerOmitsEmptyXPanelName(t *testing.T) {
+	auth := NewAuthHandler("secret", "uuid", true, "  ", "")
+	metadata, err := auth.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := metadata["xpanel-name"]; ok {
+		t.Fatalf("unexpected xpanel-name metadata: %#v", metadata)
+	}
+	if _, ok := metadata["xpanel_name"]; ok {
+		t.Fatalf("unexpected xpanel_name metadata: %#v", metadata)
+	}
+}
+
+func TestAuthHandlerEmitsNodeRoleAliases(t *testing.T) {
+	auth := NewAuthHandler("secret", "uuid", true, "", " XPanel ")
+	metadata, err := auth.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata["node-role"] != "xpanel" || metadata["node_role"] != "xpanel" {
+		t.Fatalf("node role metadata = %#v", metadata)
+	}
+}
+
+func TestAuthHandlerOmitsEmptyAndInvalidNodeRole(t *testing.T) {
+	for _, role := range []string{"", "  ", "generic", "router", "XPANEL-BOX"} {
+		auth := NewAuthHandler("secret", "uuid", true, "", role)
+		metadata, err := auth.GetRequestMetadata(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := metadata["node-role"]; ok {
+			t.Fatalf("role %q must not emit node-role: %#v", role, metadata)
+		}
+		if _, ok := metadata["node_role"]; ok {
+			t.Fatalf("role %q must not emit node_role: %#v", role, metadata)
+		}
+	}
+}
+
+func TestAuthHandlerEmitsOpenWrtRole(t *testing.T) {
+	auth := NewAuthHandler("secret", "uuid", true, "", "openwrt")
+	metadata, err := auth.GetRequestMetadata(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata["node-role"] != "openwrt" || metadata["node_role"] != "openwrt" {
+		t.Fatalf("openwrt metadata = %#v", metadata)
 	}
 }

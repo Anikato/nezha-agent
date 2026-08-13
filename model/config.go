@@ -25,6 +25,8 @@ type AgentConfig struct {
 	Server       string `koanf:"server" json:"server"`               // 服务器地址
 	ClientSecret string `koanf:"client_secret" json:"client_secret"` // 客户端密钥
 	UUID         string `koanf:"uuid" json:"uuid"`
+	XPanelName   string `koanf:"xpanel_name" json:"xpanel_name"`
+	NodeRole     string `koanf:"node_role" json:"node_role"`
 
 	HardDrivePartitionAllowlist []string        `koanf:"hard_drive_partition_allowlist" json:"hard_drive_partition_allowlist,omitempty"`
 	NICAllowlist                map[string]bool `koanf:"nic_allowlist" json:"nic_allowlist,omitempty"`

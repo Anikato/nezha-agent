@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,7 +10,7 @@ import (
 
 func TestAgentConfigValueCopyPreservesPersistenceState(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yml")
-	if err := os.WriteFile(configPath, []byte("server: example.com:5555\nclient_secret: original\nuuid: 00000000-0000-0000-0000-000000000001\n"), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte("server: example.com:5555\nclient_secret: original\nuuid: 00000000-0000-0000-0000-000000000001\nxpanel_name: 私人面板\nnode_role: xpanel\n"), 0600); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -40,7 +41,7 @@ func TestAgentConfigValueCopyPreservesPersistenceState(t *testing.T) {
 
 func TestAgentConfigCloneDeepCopiesReferenceFieldsAndPreservesPersistenceState(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yml")
-	if err := os.WriteFile(configPath, []byte("server: example.com:5555\nclient_secret: original\nuuid: 00000000-0000-0000-0000-000000000001\n"), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte("server: example.com:5555\nclient_secret: original\nuuid: 00000000-0000-0000-0000-000000000001\nxpanel_name: 私人面板\nnode_role: xpanel\n"), 0600); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
 
@@ -64,7 +65,7 @@ func TestAgentConfigCloneDeepCopiesReferenceFieldsAndPreservesPersistenceState(t
 	source.DNS[0] = "9.9.9.9:53"
 	source.CustomIPApi[0] = "https://mutated.example.test"
 
-	if !cloned.Debug || cloned.ClientSecret != "original" || cloned.UUID != "00000000-0000-0000-0000-000000000001" {
+	if !cloned.Debug || cloned.ClientSecret != "original" || cloned.UUID != "00000000-0000-0000-0000-000000000001" || cloned.XPanelName != "私人面板" || cloned.NodeRole != "xpanel" {
 		t.Fatalf("Clone lost scalar fields: %+v", cloned)
 	}
 	if cloned.k != source.k || cloned.filePath != configPath {
@@ -79,5 +80,16 @@ func TestAgentConfigCloneDeepCopiesReferenceFieldsAndPreservesPersistenceState(t
 	nilClone := nilSource.Clone()
 	if nilClone.HardDrivePartitionAllowlist != nil || nilClone.NICAllowlist != nil || nilClone.DNS != nil || nilClone.CustomIPApi != nil {
 		t.Fatalf("Clone must preserve nil reference fields: %+v", nilClone)
+	}
+}
+
+func TestApplyConfigJSONOmittingNodeRolePreservesIt(t *testing.T) {
+	cfg := AgentConfig{NodeRole: "xpanel", Debug: false}
+	tmp := cfg.Clone()
+	if err := json.Unmarshal([]byte(`{"debug":true}`), &tmp); err != nil {
+		t.Fatal(err)
+	}
+	if !tmp.Debug || tmp.NodeRole != "xpanel" {
+		t.Fatalf("preserved config = %+v", tmp)
 	}
 }
